@@ -1,18 +1,20 @@
 // ── Leaflet map view ──────────────────────────────────────────
-// Uses Leaflet from CDN (declared globally below)
 
 import { useEffect, useRef } from 'react'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 import type { PathPoint, Entry, GpsPosition as GpsPosType } from '../lib/types.js'
 import type { GpsPosition } from '../hooks/useGPS.js'
 
-// Leaflet is loaded via CDN in index.html
-declare const L: typeof import('leaflet')
+// Custom DOM event fired when user clicks 🎙 Audio in a Leaflet popup
+export const AUDIO_OPEN_EVENT = 'prayermap:audioopen'
 
 interface Props {
-  points:    PathPoint[]
-  entries:   Entry[]
-  position:  GpsPosition | null
+  points:      PathPoint[]
+  entries:     Entry[]
+  position:    GpsPosition | null
   onMapClick?: (lat: number, lng: number) => void
+  onAudioOpen?: (entry: Entry) => void
 }
 
 const ENTRY_COLOURS: Record<string, string> = {
@@ -23,7 +25,12 @@ const ENTRY_COLOURS: Record<string, string> = {
   burden:       '#ef5350',
 }
 
-export function MapView({ points, entries, position, onMapClick }: Props) {
+function hasPfAudio(entry: Entry): boolean {
+  if (!entry.ai_summary) return false
+  try { return !!(JSON.parse(entry.ai_summary) as { pf_audio?: string }).pf_audio } catch { return false }
+}
+
+export function MapView({ points, entries, position, onMapClick, onAudioOpen }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef       = useRef<ReturnType<typeof L.map> | null>(null)
   const polylineRef  = useRef<ReturnType<typeof L.polyline> | null>(null)
@@ -92,11 +99,15 @@ export function MapView({ points, entries, position, onMapClick }: Props) {
       seen.add(e.id)
       if (!entryMarkersRef.current.has(e.id)) {
         const colour = ENTRY_COLOURS[e.type] ?? '#7986cb'
+        const hasAudio = hasPfAudio(e)
+        const audioLink = hasAudio
+          ? `<br/><a href="#" data-entry-id="${e.id}" style="color:#7986cb;font-size:12px;text-decoration:none;">🎙 Audio</a>`
+          : ''
         const marker = L.circleMarker([+e.lat, +e.lng], {
           radius: 9, color: '#fff', weight: 2,
           fillColor: colour, fillOpacity: 0.9,
         })
-          .bindPopup(`<b>${e.title ?? e.type}</b>${e.body ? `<br/>${e.body.slice(0, 80)}` : ''}`)
+          .bindPopup(`<b>${e.title ?? e.type}</b>${e.body ? `<br/>${e.body.slice(0, 80)}` : ''}${audioLink}`)
           .addTo(map)
         entryMarkersRef.current.set(e.id, marker)
       }
@@ -106,6 +117,22 @@ export function MapView({ points, entries, position, onMapClick }: Props) {
       if (!seen.has(id)) { marker.remove(); entryMarkersRef.current.delete(id) }
     }
   }, [entries])
+
+  // Handle audio link clicks inside Leaflet popups (delegated)
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container || !onAudioOpen) return
+    const handler = (ev: MouseEvent) => {
+      const target = ev.target as HTMLElement
+      const entryId = target.getAttribute?.('data-entry-id')
+      if (!entryId) return
+      ev.preventDefault()
+      const entry = entries.find(e => e.id === entryId)
+      if (entry) onAudioOpen(entry)
+    }
+    container.addEventListener('click', handler)
+    return () => container.removeEventListener('click', handler)
+  }, [entries, onAudioOpen])
 
   return (
     <div ref={containerRef} style={{ flex: 1, width: '100%' }} />

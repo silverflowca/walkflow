@@ -31,6 +31,7 @@ router.post('/', async (c) => {
       title:      body.title      ?? null,
       body:       body.body       ?? null,
       tags:       body.tags       ?? [],
+      ai_summary: body.ai_summary ?? null,
     })
     .select()
     .single()

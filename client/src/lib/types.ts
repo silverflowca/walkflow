@@ -70,8 +70,8 @@ export interface PathStats {
 // ── WebSocket event shapes ────────────────────────────────────
 
 export type WsEvent =
-  | { type: 'connected' }
-  | { type: 'path.point';     walkId: string; point: PathPoint }
-  | { type: 'entry.created';  entry: Entry }
-  | { type: 'entry.updated';  entry: Entry }
-  | { type: 'walk.ended';     walk: Walk }
+  | { type: 'connected';      payload: Record<string, unknown>; timestamp: string }
+  | { type: 'path.point';     payload: { walkId: string; point: PathPoint }; timestamp: string }
+  | { type: 'entry.created';  payload: { entry: Entry }; timestamp: string }
+  | { type: 'entry.updated';  payload: { entry: Entry }; timestamp: string }
+  | { type: 'walk.ended';     payload: { walk: Walk }; timestamp: string }

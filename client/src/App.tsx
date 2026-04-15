@@ -6,6 +6,7 @@ import { MapView }                 from './components/MapView.js'
 import { WalkWidget }              from './components/WalkWidget.js'
 import { EntryCapture }            from './components/EntryCapture.js'
 import { ListView }                from './components/ListView.js'
+import { PrayerAudioPlayer }       from './components/PrayerAudioPlayer.js'
 import { WalkProvider, useWalkContext } from './context/WalkContext.js'
 import { useGPS }                  from './hooks/useGPS.js'
 import { usePathTracking }         from './hooks/usePathTracking.js'
@@ -26,6 +27,7 @@ function AppInner() {
   const [pinLng,        setPinLng]        = useState<number | null>(null)
   const [entries,       setEntries]       = useState<Entry[]>([])
   const [walkSeconds,   setWalkSeconds]   = useState(0)
+  const [audioEntry,    setAudioEntry]    = useState<Entry | null>(null)
 
   const { position, error: gpsError } = useGPS(true)
   const { points, clearPoints }        = usePathTracking(activeWalk?.id ?? null, position, !!activeWalk)
@@ -52,9 +54,11 @@ function AppInner() {
   // WebSocket: append new entries / update existing
   const handleWs = useCallback((evt: WsEvent) => {
     if (evt.type === 'entry.created') {
-      setEntries(prev => [evt.entry, ...prev])
+      const entry = evt.payload.entry
+      if (entry?.id) setEntries(prev => prev.some(e => e.id === entry.id) ? prev : [entry, ...prev])
     } else if (evt.type === 'entry.updated') {
-      setEntries(prev => prev.map(e => e.id === evt.entry.id ? evt.entry : e))
+      const entry = evt.payload.entry
+      if (entry?.id) setEntries(prev => prev.map(e => e.id === entry.id ? entry : e))
     }
   }, [])
   useWs(handleWs)
@@ -92,10 +96,11 @@ function AppInner() {
               entries={entries}
               position={position}
               onMapClick={handleMapClick}
+              onAudioOpen={setAudioEntry}
             />
           </div>
         )}
-        {tab === 'list' && <ListView />}
+        {tab === 'list' && <ListView onAudioOpen={setAudioEntry} />}
       </Layout>
 
       <WalkWidget
@@ -109,6 +114,13 @@ function AppInner() {
           position={capturePosition}
           onSaved={(e) => setEntries(prev => [e, ...prev])}
           onClose={() => { setShowCapture(false); setPinLat(null); setPinLng(null) }}
+        />
+      )}
+
+      {audioEntry && (
+        <PrayerAudioPlayer
+          entry={audioEntry}
+          onClose={() => setAudioEntry(null)}
         />
       )}
     </>

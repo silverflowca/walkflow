@@ -5,6 +5,15 @@ import { entries as entriesApi, walks as walksApi } from '../lib/api.js'
 import type { Entry, Walk } from '../lib/types.js'
 import { fmtDateTime, fmtDistance, fmtDuration } from '../lib/geo.js'
 
+interface Props {
+  onAudioOpen?: (entry: Entry) => void
+}
+
+function hasPfAudio(entry: Entry): boolean {
+  if (!entry.ai_summary) return false
+  try { return !!(JSON.parse(entry.ai_summary) as { pf_audio?: string }).pf_audio } catch { return false }
+}
+
 const S: Record<string, React.CSSProperties> = {
   container: {
     height: '100%', overflowY: 'auto', padding: '16px 16px 80px',
@@ -31,6 +40,11 @@ const S: Record<string, React.CSSProperties> = {
   }),
   row: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' },
   stat: { fontSize: 12, color: '#555' },
+  audioBtn: {
+    display: 'inline-flex', alignItems: 'center', gap: 4,
+    padding: '2px 8px', borderRadius: 12, border: 'none', cursor: 'pointer',
+    fontSize: 11, fontWeight: 600, background: '#3f51b533', color: '#7986cb',
+  },
 }
 
 const TYPE_COLOUR: Record<string, string> = {
@@ -38,7 +52,7 @@ const TYPE_COLOUR: Record<string, string> = {
   praise: '#ffd54f', burden: '#ef5350',
 }
 
-export function ListView() {
+export function ListView({ onAudioOpen }: Props) {
   const [tab,     setTab]     = useState<'entries' | 'walks'>('entries')
   const [items,   setItems]   = useState<Entry[]>([])
   const [history, setHistory] = useState<Walk[]>([])
@@ -73,6 +87,9 @@ export function ListView() {
           <div style={S.row}>
             <span style={S.pill(TYPE_COLOUR[e.type] ?? '#7986cb')}>{e.type}</span>
             <span style={S.cardMeta}>{fmtDateTime(e.created_at)}</span>
+            {hasPfAudio(e) && onAudioOpen && (
+              <button style={S.audioBtn} onClick={() => onAudioOpen(e)}>🎙 Audio</button>
+            )}
           </div>
           {e.title && <div style={S.cardTitle}>{e.title}</div>}
           {e.body  && <div style={S.cardBody}>{e.body.slice(0, 120)}{e.body.length > 120 ? '…' : ''}</div>}

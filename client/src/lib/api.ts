@@ -2,6 +2,43 @@
 
 import type { Walk, PathPoint, PathStats, Entry, EntryType, Media } from './types.js'
 
+// ── PrayerFlow transcript types (mirrored from server) ────────
+
+export interface PfWord {
+  word: string
+  punctuated_word: string
+  start: number
+  end: number
+  confidence: number
+}
+
+export interface PfUtterance {
+  start: number
+  end: number
+  transcript: string
+  words: PfWord[]
+}
+
+export interface PfTranscript {
+  filename: string
+  transcript: string
+  duration: number
+  words: PfWord[]
+  utterances: PfUtterance[]
+  createdAt: string
+}
+
+export interface PfUploadResult {
+  filename: string
+  size: number
+}
+
+export interface PfConfig {
+  url: string
+  user: string
+  configured: boolean
+}
+
 const BASE = import.meta.env.VITE_API_URL
   ? `${import.meta.env.VITE_API_URL}/api/prayer-map`
   : '/api/prayer-map'
@@ -55,6 +92,7 @@ export const entries = {
   create: (payload: {
     lat: number; lng: number; walk_id?: string; accuracy_m?: number
     type?: EntryType; title?: string; body?: string; tags?: string[]
+    ai_summary?: string
   }) => req<Entry>('POST', '/entries', payload),
 
   list: (opts?: { walk_id?: string; type?: string; limit?: number; offset?: number }) => {
@@ -104,4 +142,35 @@ export const media = {
 
   remove: (mediaId: string) =>
     req<{ ok: boolean }>('DELETE', `/media/item/${mediaId}`),
+}
+
+// ── Audio (PrayerFlow proxy) ───────────────────────────────────
+
+export const audio = {
+  getConfig: () => req<PfConfig>('GET', '/audio/config'),
+
+  setConfig: (cfg: { url?: string; user?: string; pass?: string; token?: string }) =>
+    req<PfConfig & { ok: boolean }>('POST', '/audio/config', cfg),
+
+  upload: async (blob: Blob, name: string): Promise<PfUploadResult> => {
+    const form = new FormData()
+    const ext  = blob.type.includes('mp4') ? '.mp4' : '.webm'
+    form.append('audio', blob, `${name}${ext}`)
+    form.append('name', name)
+    const token = localStorage.getItem('pm_token')
+    const res = await fetch(`${BASE}/audio/upload`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }))
+      throw new Error(err.error ?? res.statusText)
+    }
+    return res.json()
+  },
+
+  transcribe:    (filename: string) => req<PfTranscript>('POST', `/audio/transcribe/${encodeURIComponent(filename)}`),
+  getTranscript: (filename: string) => req<PfTranscript>('GET',  `/audio/transcript/${encodeURIComponent(filename)}`),
+  playUrl:       (filename: string) => `${BASE}/audio/play/${encodeURIComponent(filename)}`,
 }

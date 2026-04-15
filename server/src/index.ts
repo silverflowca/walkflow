@@ -18,6 +18,7 @@ import walksRouter   from './routes/walks.js'
 import pathRouter    from './routes/path.js'
 import entriesRouter from './routes/entries.js'
 import mediaRouter   from './routes/media.js'
+import audioRouter   from './routes/audio.js'
 
 const app = new Hono()
 
@@ -50,6 +51,9 @@ app.route('/api/prayer-map/entries', entriesRouter)
 
 // Media upload/fetch/delete
 app.route('/api/prayer-map/media', mediaRouter)
+
+// PrayerFlow audio proxy
+app.route('/api/prayer-map/audio', audioRouter)
 
 // ── Serve client static files (production) ───────────────────
 

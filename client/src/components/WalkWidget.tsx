@@ -72,7 +72,7 @@ export function WalkWidget({ points, seconds, onPin }: Props) {
           }}
         />
         <button
-          style={{ ...S.btn, ...S.startBtn, flex: 'initial', padding: '8px 18px' }}
+          style={{ ...S.btn, background: '#2e7d32', color: '#fff', padding: '8px 18px' }}
           disabled={starting}
           onClick={async () => {
             setStarting(true)
