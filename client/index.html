@@ -13,6 +13,13 @@
       crossorigin=""
     />
 
+    <!-- Leaflet JS — must load before React bundle -->
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV/XN/WPeE="
+      crossorigin=""
+    ></script>
+
     <style>
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
       html, body, #root { height: 100%; width: 100%; overflow: hidden; }
@@ -21,13 +28,6 @@
   </head>
   <body>
     <div id="root"></div>
-
-    <!-- Leaflet JS -->
-    <script
-      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV/XN/WPeE="
-      crossorigin=""
-    ></script>
 
     <script type="module" src="/src/main.tsx"></script>
   </body>
