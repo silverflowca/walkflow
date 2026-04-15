@@ -2,11 +2,11 @@
 FROM node:22-alpine AS client-builder
 WORKDIR /client
 
-COPY ../client/package.json ./
+COPY client/package.json ./
 RUN npm install
 
-COPY ../client/tsconfig.json ../client/vite.config.ts ../client/index.html ./
-COPY ../client/src/ ./src/
+COPY client/tsconfig.json client/vite.config.ts client/index.html ./
+COPY client/src/ ./src/
 
 RUN npm run build
 
@@ -14,11 +14,11 @@ RUN npm run build
 FROM node:22-alpine AS server-builder
 WORKDIR /app
 
-COPY package.json ./
+COPY server/package.json ./
 RUN npm install
 
-COPY tsconfig.json ./
-COPY src/ ./src/
+COPY server/tsconfig.json ./
+COPY server/src/ ./src/
 RUN npm run build
 
 # ── Stage 3: Runtime ─────────────────────────────────────────
@@ -30,7 +30,7 @@ COPY --from=server-builder /app/package.json ./
 COPY --from=server-builder /app/node_modules ./node_modules
 COPY --from=server-builder /app/dist ./dist
 
-# Client build output served as static files
+# Client build output served as static files at /app/public
 COPY --from=client-builder /client/dist ./public
 
 EXPOSE 3014

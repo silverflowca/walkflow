@@ -3,11 +3,13 @@
 // ============================================================
 
 import 'dotenv/config'
-import { serve } from '@hono/node-server'
-import { Hono }  from 'hono'
-import { cors }  from 'hono/cors'
-import { logger } from 'hono/logger'
+import { serve }        from '@hono/node-server'
+import { serveStatic }  from '@hono/node-server/serve-static'
+import { Hono }         from 'hono'
+import { cors }         from 'hono/cors'
+import { logger }       from 'hono/logger'
 import { WebSocketServer } from 'ws'
+import path from 'path'
 
 import { requireAuth as authMiddleware } from './middleware/auth.js'
 import { initWss }        from './lib/wss.js'
@@ -48,6 +50,24 @@ app.route('/api/prayer-map/entries', entriesRouter)
 
 // Media upload/fetch/delete
 app.route('/api/prayer-map/media', mediaRouter)
+
+// ── Serve client static files (production) ───────────────────
+
+if (process.env.NODE_ENV === 'production') {
+  // Serve built assets (Vite puts them in /assets)
+  app.use('/*', serveStatic({ root: './public' }))
+  // SPA fallback — all non-API, non-asset routes serve index.html
+  app.get('*', async (c) => {
+    const { readFile } = await import('fs/promises')
+    const indexPath = path.join(process.cwd(), 'public', 'index.html')
+    try {
+      const html = await readFile(indexPath, 'utf-8')
+      return c.html(html)
+    } catch {
+      return c.text('Not found', 404)
+    }
+  })
+}
 
 // ── Start ────────────────────────────────────────────────────
 
