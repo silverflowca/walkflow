@@ -1,7 +1,5 @@
 // ── Inline prayer audio player + word-synced transcript ───────
-// Opens as a full-screen modal overlay.
-// Reads pf_audio filename from entry.ai_summary JSON.
-// Fetches transcript from walkflow server proxy, streams audio the same way.
+// Opens as a full-screen modal overlay (native-style bottom sheet).
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { audio as audioApi } from '../lib/api.js'
@@ -13,7 +11,6 @@ interface Props {
   onClose: () => void
 }
 
-// Parse ai_summary JSON to get pf_audio filename
 function getPfAudio(entry: Entry): string | null {
   if (!entry.ai_summary) return null
   try {
@@ -24,71 +21,25 @@ function getPfAudio(entry: Entry): string | null {
   }
 }
 
-const S: Record<string, React.CSSProperties> = {
-  overlay: {
-    position: 'fixed', inset: 0, zIndex: 2000,
-    background: 'rgba(0,0,0,0.85)',
-    display: 'flex', flexDirection: 'column',
-    alignItems: 'stretch',
-  },
-  header: {
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: '16px 20px 8px',
-    borderBottom: '1px solid #2d3056',
-    flexShrink: 0,
-  },
-  title: { fontSize: 16, fontWeight: 700, color: '#e8eaf6', flex: 1, marginRight: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  closeBtn: {
-    background: 'none', border: 'none', color: '#9fa8da',
-    fontSize: 22, cursor: 'pointer', padding: '0 4px', lineHeight: 1,
-  },
-  body: {
-    flex: 1, overflowY: 'auto',
-    padding: '16px 20px',
-    display: 'flex', flexDirection: 'column', gap: 16,
-  },
-  audioEl: { width: '100%', borderRadius: 8, display: 'block', outline: 'none' },
-  transcriptArea: {
-    flex: 1, overflowY: 'auto',
-    background: '#12142a', borderRadius: 10,
-    padding: '14px 16px',
-    display: 'flex', flexDirection: 'column', gap: 12,
-  },
-  utterance: {
-    display: 'flex', flexWrap: 'wrap', gap: 4,
-    lineHeight: 1.8,
-  },
-  word: (active: boolean, past: boolean): React.CSSProperties => ({
-    display: 'inline',
-    padding: '1px 3px',
-    borderRadius: 4,
-    fontSize: 15,
-    cursor: 'pointer',
-    fontWeight: active ? 700 : 400,
-    background: active ? '#3f51b5' : 'transparent',
-    color: active ? '#fff' : past ? '#9fa8da' : '#616a9a',
-    transition: 'background 0.15s, color 0.15s',
-    textDecoration: 'none',
-  }),
-  loading: { color: '#555', textAlign: 'center', padding: 40, fontSize: 14 },
-  errorBox: { color: '#ef5350', fontSize: 13, textAlign: 'center', padding: 20 },
-  metaRow: { fontSize: 12, color: '#555', display: 'flex', gap: 12 },
-  tag: {
-    display: 'inline-block', padding: '2px 8px', borderRadius: 12,
-    fontSize: 11, fontWeight: 600, background: '#2a2d3e', color: '#7986cb',
-  },
+const TYPE_META: Record<string, { emoji: string; color: string }> = {
+  prayer:       { emoji: '🙏', color: '#81c784' },
+  praise:       { emoji: '🎉', color: '#ffd54f' },
+  intercession: { emoji: '⚔️', color: '#ff8a65' },
+  burden:       { emoji: '💔', color: '#ef5350' },
+  note:         { emoji: '📝', color: '#7986cb' },
 }
 
 export function PrayerAudioPlayer({ entry, onClose }: Props) {
   const filename = getPfAudio(entry)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const meta = TYPE_META[entry.type] ?? { emoji: '📍', color: '#7986cb' }
 
-  const [transcript, setTranscript] = useState<PfTranscript | null>(null)
-  const [loading,    setLoading]    = useState(true)
-  const [loadError,  setLoadError]  = useState<string | null>(null)
-  const [currentTime, setCurrentTime] = useState(0)
+  const [transcript,   setTranscript]   = useState<PfTranscript | null>(null)
+  const [loading,      setLoading]      = useState(true)
+  const [loadError,    setLoadError]    = useState<string | null>(null)
+  const [currentTime,  setCurrentTime]  = useState(0)
+  const [isPlaying,    setIsPlaying]    = useState(false)
 
-  // Load transcript on mount
   useEffect(() => {
     if (!filename) { setLoading(false); return }
     audioApi.getTranscript(filename)
@@ -96,12 +47,10 @@ export function PrayerAudioPlayer({ entry, onClose }: Props) {
       .catch(e  => { setLoadError(e instanceof Error ? e.message : 'Failed to load transcript'); setLoading(false) })
   }, [filename])
 
-  // Track audio currentTime
   const handleTimeUpdate = useCallback(() => {
     setCurrentTime(audioRef.current?.currentTime ?? 0)
   }, [])
 
-  // Click word → seek
   const seekToWord = useCallback((word: PfWord) => {
     if (audioRef.current) {
       audioRef.current.currentTime = word.start
@@ -109,65 +58,177 @@ export function PrayerAudioPlayer({ entry, onClose }: Props) {
     }
   }, [])
 
-  if (!filename) {
-    return (
-      <div style={S.overlay} onClick={onClose}>
-        <div style={{ ...S.body, justifyContent: 'center', alignItems: 'center' }}>
-          <div style={S.errorBox}>No audio attached to this pin.</div>
-        </div>
-      </div>
-    )
-  }
-
-  const audioUrl = audioApi.playUrl(filename)
-
   return (
-    <div style={S.overlay} onClick={onClose}>
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }} onClick={e => e.stopPropagation()}>
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 2000,
+        background: 'rgba(0,0,0,0.75)',
+        display: 'flex', alignItems: 'flex-end',
+        backdropFilter: 'blur(6px)',
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          width: '100%',
+          background: '#0e1022',
+          borderRadius: '24px 24px 0 0',
+          paddingBottom: 'env(safe-area-inset-bottom, 16px)',
+          maxHeight: '88vh',
+          display: 'flex', flexDirection: 'column',
+          border: '1px solid rgba(255,255,255,0.08)',
+          borderBottom: 'none',
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Drag handle */}
+        <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 12, paddingBottom: 4, flexShrink: 0 }}>
+          <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.18)' }} />
+        </div>
 
         {/* Header */}
-        <div style={S.header}>
-          <div style={S.title}>🎙 {entry.title ?? entry.type}</div>
-          <button style={S.closeBtn} onClick={onClose}>×</button>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 12,
+          padding: '8px 20px 14px',
+          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          flexShrink: 0,
+        }}>
+          <div style={{
+            width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+            background: `${meta.color}18`,
+            border: `1.5px solid ${meta.color}44`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 20,
+          }}>{meta.emoji}</div>
+
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{
+              fontSize: 16, fontWeight: 700, color: '#f0f2ff',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {entry.title ?? entry.type.charAt(0).toUpperCase() + entry.type.slice(1)}
+            </div>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginTop: 2 }}>
+              📍 {(+entry.lat).toFixed(5)}, {(+entry.lng).toFixed(5)}
+            </div>
+          </div>
+
+          <button
+            onClick={onClose}
+            style={{
+              background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '50%',
+              width: 32, height: 32, cursor: 'pointer',
+              color: 'rgba(255,255,255,0.5)', fontSize: 18,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >×</button>
         </div>
 
-        {/* Body */}
-        <div style={S.body}>
-          {/* Meta */}
-          <div style={S.metaRow}>
-            <span>📍 {(+entry.lat).toFixed(5)}, {(+entry.lng).toFixed(5)}</span>
-            {entry.tags.length > 0 && (
-              <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                {entry.tags.map(t => <span key={t} style={S.tag}>#{t}</span>)}
+        {/* Tags */}
+        {entry.tags.length > 0 && (
+          <div style={{
+            display: 'flex', gap: 6, flexWrap: 'wrap',
+            padding: '10px 20px 0',
+            flexShrink: 0,
+          }}>
+            {entry.tags.map(t => (
+              <span key={t} style={{
+                fontSize: 11, fontWeight: 600,
+                color: 'rgba(255,255,255,0.35)',
+                background: 'rgba(255,255,255,0.06)',
+                borderRadius: 8, padding: '2px 8px',
+              }}>#{t}</span>
+            ))}
+          </div>
+        )}
+
+        {/* Audio player */}
+        {filename && (
+          <div style={{ padding: '14px 20px 0', flexShrink: 0 }}>
+            <audio
+              ref={audioRef}
+              controls
+              src={audioApi.playUrl(filename)}
+              onTimeUpdate={handleTimeUpdate}
+              onPlay={() => setIsPlaying(true)}
+              onPause={() => setIsPlaying(false)}
+              style={{
+                width: '100%', borderRadius: 12,
+                outline: 'none', display: 'block',
+                // Tint the native audio bar
+                accentColor: meta.color,
+              }}
+            />
+          </div>
+        )}
+
+        {/* Transcript area — scrollable */}
+        <div style={{
+          flex: 1, overflowY: 'auto',
+          padding: '14px 20px 8px',
+          display: 'flex', flexDirection: 'column', gap: 12,
+        }}>
+          {/* Section header */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.3)', letterSpacing: 0.8 }}>
+              TRANSCRIPT
+            </span>
+            {loading && (
+              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.2)', animation: 'pulse 1.2s ease-in-out infinite' }}>
+                Loading…
               </span>
             )}
           </div>
 
-          {/* Audio element */}
-          <audio
-            ref={audioRef}
-            style={S.audioEl}
-            controls
-            src={audioUrl}
-            onTimeUpdate={handleTimeUpdate}
-          />
+          {loadError && (
+            <div style={{
+              background: 'rgba(198,40,40,0.12)', border: '1px solid rgba(198,40,40,0.3)',
+              borderRadius: 12, padding: '12px 14px',
+              fontSize: 13, color: '#ef9a9a',
+            }}>⚠ {loadError}</div>
+          )}
 
-          {/* Transcript */}
-          {loading && <div style={S.loading}>Loading transcript…</div>}
-          {loadError && <div style={S.errorBox}>⚠ {loadError}</div>}
+          {!loading && !loadError && !filename && (
+            <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.2)', textAlign: 'center', padding: '20px 0' }}>
+              No audio attached to this pin.
+            </div>
+          )}
+
           {!loading && !loadError && transcript && (
-            <div style={S.transcriptArea}>
+            <div style={{
+              background: 'rgba(255,255,255,0.03)', borderRadius: 16,
+              border: '1px solid rgba(255,255,255,0.06)',
+              padding: '14px 16px',
+              display: 'flex', flexDirection: 'column', gap: 14,
+            }}>
               {transcript.utterances.length > 0
                 ? transcript.utterances.map((utt: PfUtterance, ui: number) => (
-                    <div key={ui} style={S.utterance}>
+                    <div
+                      key={ui}
+                      style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 4px', lineHeight: 1.8 }}
+                    >
                       {utt.words.map((w: PfWord, wi: number) => {
                         const active = currentTime >= w.start && currentTime < w.end
                         const past   = currentTime >= w.end
                         return (
                           <span
                             key={wi}
-                            style={S.word(active, past)}
                             onClick={() => seekToWord(w)}
+                            style={{
+                              display: 'inline',
+                              padding: '1px 4px',
+                              borderRadius: 5,
+                              fontSize: 15,
+                              cursor: 'pointer',
+                              fontWeight: active ? 700 : 400,
+                              background: active ? meta.color : 'transparent',
+                              color: active ? '#fff'
+                                : past ? 'rgba(255,255,255,0.55)'
+                                : 'rgba(255,255,255,0.3)',
+                              transition: 'background 0.12s, color 0.12s',
+                              letterSpacing: 0.1,
+                            }}
                           >
                             {w.punctuated_word}
                           </span>
@@ -176,15 +237,21 @@ export function PrayerAudioPlayer({ entry, onClose }: Props) {
                     </div>
                   ))
                 : (
-                  <p style={{ color: '#9fa8da', fontSize: 15, margin: 0, lineHeight: 1.7 }}>
+                  <p style={{
+                    color: 'rgba(255,255,255,0.45)', fontSize: 15,
+                    margin: 0, lineHeight: 1.8,
+                  }}>
                     {transcript.transcript}
                   </p>
                 )
               }
             </div>
           )}
-          {!loading && !loadError && !transcript && (
-            <div style={S.errorBox}>No transcript available for this recording.</div>
+
+          {!loading && !loadError && transcript === null && filename && (
+            <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.2)', textAlign: 'center', padding: '20px 0' }}>
+              No transcript available yet.
+            </div>
           )}
         </div>
       </div>

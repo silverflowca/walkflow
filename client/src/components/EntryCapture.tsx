@@ -1,4 +1,4 @@
-// ── Modal / bottom-sheet for creating a prayer entry ─────────
+// ── Entry capture — native-style bottom sheet ─────────────────
 
 import { useState } from 'react'
 import { entries as entriesApi, audio as audioApi } from '../lib/api.js'
@@ -14,14 +14,14 @@ interface Props {
   onClose:  () => void
 }
 
-const TYPES: EntryType[] = ['note', 'prayer', 'intercession', 'praise', 'burden']
+const TYPES: EntryType[] = ['prayer', 'praise', 'intercession', 'burden', 'note']
 
-const TYPE_EMOJI: Record<EntryType, string> = {
-  note:         '📝',
-  prayer:       '🙏',
-  intercession: '⚔️',
-  praise:       '🎉',
-  burden:       '💔',
+const TYPE_META: Record<EntryType, { emoji: string; label: string; color: string }> = {
+  prayer:       { emoji: '🙏', label: 'Prayer',       color: '#81c784' },
+  praise:       { emoji: '🎉', label: 'Praise',       color: '#ffd54f' },
+  intercession: { emoji: '⚔️', label: 'Intercession', color: '#ff8a65' },
+  burden:       { emoji: '💔', label: 'Burden',       color: '#ef5350' },
+  note:         { emoji: '📝', label: 'Note',         color: '#7986cb' },
 }
 
 function fmtMs(ms: number) {
@@ -32,79 +32,6 @@ function fmtMs(ms: number) {
 
 type AudioState = 'idle' | 'recording' | 'uploading' | 'done' | 'error'
 
-const S: Record<string, React.CSSProperties> = {
-  overlay: {
-    position: 'fixed', inset: 0, zIndex: 1000,
-    background: 'rgba(0,0,0,0.6)',
-    display: 'flex', alignItems: 'flex-end',
-  },
-  sheet: {
-    width: '100%', background: '#1a1d2e',
-    borderRadius: '16px 16px 0 0',
-    padding: '20px 16px 32px',
-    display: 'flex', flexDirection: 'column', gap: 14,
-    maxHeight: '90vh', overflowY: 'auto',
-  },
-  title: { fontSize: 18, fontWeight: 700, color: '#e8eaf6' },
-  label: { fontSize: 12, color: '#7986cb', marginBottom: 4, display: 'block', textTransform: 'uppercase', letterSpacing: 0.8 },
-  input: {
-    width: '100%', background: '#2a2d3e', border: '1px solid #3d405b',
-    borderRadius: 8, padding: '10px 12px', color: '#e8eaf6',
-    fontSize: 15, outline: 'none',
-  },
-  textarea: {
-    width: '100%', background: '#2a2d3e', border: '1px solid #3d405b',
-    borderRadius: 8, padding: '10px 12px', color: '#e8eaf6',
-    fontSize: 14, outline: 'none', resize: 'vertical', minHeight: 90,
-    fontFamily: 'inherit',
-  },
-  typeRow: { display: 'flex', gap: 8, flexWrap: 'wrap' },
-  typePill: (active: boolean): React.CSSProperties => ({
-    padding: '6px 12px', borderRadius: 20, border: 'none', cursor: 'pointer',
-    fontSize: 13, fontWeight: 500,
-    background: active ? '#3f51b5' : '#2a2d3e',
-    color: active ? '#fff' : '#9fa8da',
-  }),
-  row: { display: 'flex', gap: 10 },
-  saveBtn: {
-    flex: 1, padding: '12px 0', borderRadius: 10, border: 'none',
-    background: '#3f51b5', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer',
-  },
-  cancelBtn: {
-    padding: '12px 20px', borderRadius: 10, border: 'none',
-    background: '#2a2d3e', color: '#9fa8da', fontSize: 15, cursor: 'pointer',
-  },
-  gps: { fontSize: 12, color: '#555', textAlign: 'center' as const },
-  // Audio panel
-  audioPanel: {
-    background: '#12142a', border: '1px solid #2d3056',
-    borderRadius: 10, padding: '12px 14px',
-    display: 'flex', flexDirection: 'column', gap: 10,
-  },
-  audioHeader: { display: 'flex', alignItems: 'center', gap: 8 },
-  recBtn: (recording: boolean): React.CSSProperties => ({
-    display: 'flex', alignItems: 'center', gap: 8,
-    padding: '8px 16px', borderRadius: 20, border: 'none', cursor: 'pointer',
-    fontWeight: 600, fontSize: 13,
-    background: recording ? '#c62828' : '#3f51b5',
-    color: '#fff',
-  }),
-  dot: {
-    width: 10, height: 10, borderRadius: '50%',
-    background: '#ef5350', animation: 'pulse 1s infinite',
-  },
-  timer: { fontSize: 13, color: '#ef5350', fontVariantNumeric: 'tabular-nums' },
-  transcriptBox: {
-    background: '#1e2038', borderRadius: 8, padding: '10px 12px',
-    maxHeight: 120, overflowY: 'auto',
-    fontSize: 13, color: '#b0bec5', lineHeight: 1.6,
-  },
-  audioPreview: {
-    width: '100%', borderRadius: 8, background: '#2a2d3e',
-    outline: 'none', display: 'block',
-  },
-}
-
 export function EntryCapture({ position, onSaved, onClose }: Props) {
   const { activeWalk } = useWalkContext()
   const [type,   setType]   = useState<EntryType>('prayer')
@@ -114,7 +41,6 @@ export function EntryCapture({ position, onSaved, onClose }: Props) {
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState<string | null>(null)
 
-  // Audio state
   const recorder = useAudioRecorder()
   const [audioState,    setAudioState]    = useState<AudioState>('idle')
   const [audioFilename, setAudioFilename] = useState<string | null>(null)
@@ -158,18 +84,14 @@ export function EntryCapture({ position, onSaved, onClose }: Props) {
     if (!position) { setError('Waiting for GPS…'); return }
     setSaving(true); setError(null)
     try {
-      const aiSummary = audioFilename
-        ? JSON.stringify({ pf_audio: audioFilename })
-        : undefined
+      const aiSummary = audioFilename ? JSON.stringify({ pf_audio: audioFilename }) : undefined
       const entry = await entriesApi.create({
-        lat:        position.lat,
-        lng:        position.lng,
+        lat: position.lat, lng: position.lng,
         accuracy_m: position.accuracy_m,
-        walk_id:    activeWalk?.id,
-        type,
-        title:      title.trim() || undefined,
-        body:       body.trim()  || undefined,
-        tags:       tags.split(',').map(t => t.trim()).filter(Boolean),
+        walk_id: activeWalk?.id,
+        type, title: title.trim() || undefined,
+        body: body.trim() || undefined,
+        tags: tags.split(',').map(t => t.trim()).filter(Boolean),
         ai_summary: aiSummary,
       })
       onSaved(entry)
@@ -181,139 +103,278 @@ export function EntryCapture({ position, onSaved, onClose }: Props) {
     }
   }
 
+  const meta = TYPE_META[type]
+  const canSave = !!position && !saving && audioState !== 'recording' && audioState !== 'uploading'
+
   return (
-    <div style={S.overlay} onClick={onClose}>
-      <div style={S.sheet} onClick={e => e.stopPropagation()}>
-        <div style={S.title}>New Pin</div>
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: 'rgba(0,0,0,0.65)',
+        display: 'flex', alignItems: 'flex-end',
+        backdropFilter: 'blur(4px)',
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          width: '100%',
+          background: '#111320',
+          borderRadius: '24px 24px 0 0',
+          paddingBottom: 'env(safe-area-inset-bottom, 16px)',
+          maxHeight: '92vh', overflowY: 'auto',
+          border: '1px solid rgba(255,255,255,0.08)',
+          borderBottom: 'none',
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Drag handle */}
+        <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 12, paddingBottom: 4 }}>
+          <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.2)' }} />
+        </div>
 
-        <div>
-          <span style={S.label}>Type</span>
-          <div style={S.typeRow}>
-            {TYPES.map(t => (
-              <button key={t} style={S.typePill(type === t)} onClick={() => setType(t)}>
-                {TYPE_EMOJI[t]} {t}
-              </button>
-            ))}
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 20px 16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{
+              width: 38, height: 38, borderRadius: 12,
+              background: `${meta.color}22`,
+              border: `1.5px solid ${meta.color}66`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 20,
+            }}>{meta.emoji}</div>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#f0f2ff' }}>Drop a Pin</div>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>
+                {position
+                  ? `${position.lat.toFixed(5)}, ${position.lng.toFixed(5)}`
+                  : 'Acquiring GPS…'}
+              </div>
+            </div>
           </div>
+          <button
+            onClick={onClose}
+            style={{ background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '50%', width: 32, height: 32, cursor: 'pointer', color: 'rgba(255,255,255,0.5)', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >×</button>
         </div>
 
-        <div>
-          <span style={S.label}>Title</span>
-          <input
-            style={S.input}
-            placeholder="Short title…"
-            value={title}
-            onChange={e => setTitle(e.target.value)}
-          />
-        </div>
+        <div style={{ padding: '0 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-        <div>
-          <span style={S.label}>Notes / Prayer</span>
-          <textarea
-            style={S.textarea}
-            placeholder="Write your prayer or note here…"
-            value={body}
-            onChange={e => setBody(e.target.value)}
-          />
-        </div>
-
-        <div>
-          <span style={S.label}>Tags (comma-separated)</span>
-          <input
-            style={S.input}
-            placeholder="healing, unity, city…"
-            value={tags}
-            onChange={e => setTags(e.target.value)}
-          />
-        </div>
-
-        {/* ── Audio Recording Panel ─────────────────────── */}
-        <div style={S.audioPanel}>
-          <span style={S.label}>🎙 Prayer Audio</span>
-
-          {audioState === 'idle' && (
-            <button style={S.recBtn(false)} onClick={handleStartRec}>
-              🎙 Record Prayer Audio
-            </button>
-          )}
-
-          {audioState === 'recording' && (
-            <div style={S.audioHeader}>
-              <div style={S.dot} />
-              <span style={S.timer}>{fmtMs(recorder.durationMs)}</span>
-              <button style={S.recBtn(true)} onClick={handleStopRec}>
-                ⏹ Stop
-              </button>
-            </div>
-          )}
-
-          {audioState === 'uploading' && (
-            <div style={{ color: '#9fa8da', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⏳</span>
-              Uploading &amp; transcribing…
-            </div>
-          )}
-
-          {audioState === 'done' && audioBlob && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ color: '#81c784', fontSize: 13, fontWeight: 600 }}>✓ Recorded</span>
+          {/* Type selector */}
+          <div style={{ display: 'flex', gap: 8 }}>
+            {TYPES.map(t => {
+              const m = TYPE_META[t]
+              const active = type === t
+              return (
                 <button
-                  style={{ ...S.recBtn(false), background: '#2a2d3e', color: '#9fa8da', padding: '4px 10px', fontSize: 12 }}
-                  onClick={handleRetryAudio}
+                  key={t}
+                  onClick={() => setType(t)}
+                  style={{
+                    flex: 1, padding: '10px 4px',
+                    borderRadius: 14, border: `1.5px solid ${active ? m.color : 'transparent'}`,
+                    background: active ? `${m.color}22` : 'rgba(255,255,255,0.05)',
+                    cursor: 'pointer',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+                    transition: 'all 0.15s',
+                  }}
                 >
-                  Re-record
+                  <span style={{ fontSize: 18 }}>{m.emoji}</span>
+                  <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 0.3, color: active ? m.color : 'rgba(255,255,255,0.35)' }}>
+                    {m.label.toUpperCase()}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Title input */}
+          <div style={{
+            background: 'rgba(255,255,255,0.05)', borderRadius: 14,
+            border: '1px solid rgba(255,255,255,0.08)',
+            padding: '12px 16px',
+          }}>
+            <input
+              placeholder="Title (optional)"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              style={{
+                width: '100%', background: 'transparent', border: 'none',
+                outline: 'none', color: '#f0f2ff', fontSize: 15,
+                fontFamily: 'inherit',
+              }}
+            />
+          </div>
+
+          {/* Body textarea */}
+          <div style={{
+            background: 'rgba(255,255,255,0.05)', borderRadius: 14,
+            border: '1px solid rgba(255,255,255,0.08)',
+            padding: '12px 16px',
+          }}>
+            <textarea
+              placeholder="Write your prayer or notes…"
+              value={body}
+              onChange={e => setBody(e.target.value)}
+              rows={3}
+              style={{
+                width: '100%', background: 'transparent', border: 'none',
+                outline: 'none', color: '#f0f2ff', fontSize: 14,
+                resize: 'none', fontFamily: 'inherit', lineHeight: 1.6,
+              }}
+            />
+          </div>
+
+          {/* Tags */}
+          <div style={{
+            background: 'rgba(255,255,255,0.05)', borderRadius: 14,
+            border: '1px solid rgba(255,255,255,0.08)',
+            padding: '10px 16px',
+            display: 'flex', alignItems: 'center', gap: 8,
+          }}>
+            <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.3)' }}>#</span>
+            <input
+              placeholder="Tags: healing, unity, city…"
+              value={tags}
+              onChange={e => setTags(e.target.value)}
+              style={{
+                flex: 1, background: 'transparent', border: 'none',
+                outline: 'none', color: '#f0f2ff', fontSize: 14,
+                fontFamily: 'inherit',
+              }}
+            />
+          </div>
+
+          {/* Audio panel */}
+          <div style={{
+            background: 'rgba(63,81,181,0.08)', borderRadius: 16,
+            border: '1px solid rgba(63,81,181,0.25)',
+            padding: '14px 16px',
+            display: 'flex', flexDirection: 'column', gap: 12,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 16 }}>🎙</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.7)', letterSpacing: 0.3 }}>
+                PRAYER AUDIO
+              </span>
+            </div>
+
+            {audioState === 'idle' && (
+              <button
+                onClick={handleStartRec}
+                style={{
+                  padding: '10px 0', borderRadius: 12, border: 'none',
+                  background: 'linear-gradient(135deg, #3949ab, #5c6bc0)',
+                  color: '#fff', fontWeight: 600, fontSize: 14,
+                  cursor: 'pointer', width: '100%',
+                }}
+              >
+                🎙 Record Prayer Audio
+              </button>
+            )}
+
+            {audioState === 'recording' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{
+                  width: 10, height: 10, borderRadius: '50%',
+                  background: '#ef5350', animation: 'pulse 1s infinite',
+                  flexShrink: 0,
+                }} />
+                <span style={{ fontSize: 16, fontWeight: 700, color: '#ef5350', fontVariantNumeric: 'tabular-nums', flex: 1 }}>
+                  {fmtMs(recorder.durationMs)}
+                </span>
+                <button
+                  onClick={handleStopRec}
+                  style={{
+                    padding: '9px 20px', borderRadius: 12, border: 'none',
+                    background: '#c62828', color: '#fff',
+                    fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                  }}
+                >
+                  ⏹ Stop
                 </button>
               </div>
-              <audio
-                style={S.audioPreview}
-                controls
-                src={URL.createObjectURL(audioBlob)}
-              />
-              {transcript && (
-                <div style={S.transcriptBox}>
-                  {transcript.utterances.length > 0
-                    ? transcript.utterances.map((u, i) => (
-                        <p key={i} style={{ margin: '0 0 4px' }}>{u.transcript}</p>
-                      ))
-                    : transcript.transcript}
+            )}
+
+            {audioState === 'uploading' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'rgba(255,255,255,0.6)', fontSize: 13 }}>
+                <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⏳</span>
+                Uploading &amp; transcribing…
+              </div>
+            )}
+
+            {audioState === 'done' && audioBlob && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: '#81c784' }}>✓ Recorded</span>
+                  <button
+                    onClick={handleRetryAudio}
+                    style={{ background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: 8, padding: '4px 10px', color: 'rgba(255,255,255,0.5)', fontSize: 12, cursor: 'pointer' }}
+                  >Re-record</button>
                 </div>
-              )}
-            </div>
-          )}
+                <audio controls src={URL.createObjectURL(audioBlob)} style={{ width: '100%', borderRadius: 10 }} />
+                {transcript && (
+                  <div style={{
+                    background: 'rgba(0,0,0,0.3)', borderRadius: 10,
+                    padding: '10px 12px', maxHeight: 100, overflowY: 'auto',
+                    fontSize: 13, color: 'rgba(255,255,255,0.6)', lineHeight: 1.6,
+                  }}>
+                    {transcript.utterances.length > 0
+                      ? transcript.utterances.map((u, i) => <p key={i} style={{ margin: '0 0 4px' }}>{u.transcript}</p>)
+                      : transcript.transcript}
+                  </div>
+                )}
+              </div>
+            )}
 
-          {audioState === 'error' && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ color: '#ef5350', fontSize: 13 }}>
-                ⚠ {audioError}
-              </span>
-              <button style={{ ...S.recBtn(false), background: '#2a2d3e', padding: '4px 10px', fontSize: 12 }} onClick={handleRetryAudio}>
-                Retry
-              </button>
-            </div>
-          )}
+            {audioState === 'error' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ color: '#ef5350', fontSize: 13, flex: 1 }}>⚠ {audioError}</span>
+                <button
+                  onClick={handleRetryAudio}
+                  style={{ background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: 8, padding: '4px 10px', color: 'rgba(255,255,255,0.5)', fontSize: 12, cursor: 'pointer' }}
+                >Retry</button>
+              </div>
+            )}
 
-          {recorder.error && (
-            <div style={{ color: '#ef5350', fontSize: 12 }}>{recorder.error}</div>
-          )}
-        </div>
-
-        {position ? (
-          <div style={S.gps}>
-            📍 {position.lat.toFixed(6)}, {position.lng.toFixed(6)}
-            {' '}± {Math.round(position.accuracy_m)} m
+            {recorder.error && <div style={{ color: '#ef5350', fontSize: 12 }}>{recorder.error}</div>}
           </div>
-        ) : (
-          <div style={{ ...S.gps, color: '#c62828' }}>Acquiring GPS…</div>
-        )}
 
-        {error && <div style={{ color: '#ef5350', fontSize: 13 }}>{error}</div>}
+          {error && (
+            <div style={{
+              background: 'rgba(198,40,40,0.15)', border: '1px solid rgba(198,40,40,0.4)',
+              borderRadius: 10, padding: '10px 14px',
+              color: '#ef9a9a', fontSize: 13,
+            }}>{error}</div>
+          )}
 
-        <div style={S.row}>
-          <button style={S.cancelBtn} onClick={onClose}>Cancel</button>
-          <button style={S.saveBtn} disabled={saving || !position || audioState === 'recording' || audioState === 'uploading'} onClick={save}>
-            {saving ? 'Saving…' : 'Save Pin'}
-          </button>
+          {/* Action buttons */}
+          <div style={{ display: 'flex', gap: 10, paddingBottom: 8 }}>
+            <button
+              onClick={onClose}
+              style={{
+                padding: '14px 20px', borderRadius: 14, border: '1px solid rgba(255,255,255,0.1)',
+                background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)',
+                fontSize: 15, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600,
+              }}
+            >Cancel</button>
+            <button
+              onClick={save}
+              disabled={!canSave}
+              style={{
+                flex: 1, padding: '14px 0', borderRadius: 14, border: 'none',
+                background: canSave
+                  ? 'linear-gradient(135deg, #3949ab, #5c6bc0)'
+                  : 'rgba(255,255,255,0.08)',
+                color: canSave ? '#fff' : 'rgba(255,255,255,0.3)',
+                fontSize: 15, fontWeight: 700, cursor: canSave ? 'pointer' : 'default',
+                fontFamily: 'inherit',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              }}
+            >
+              {saving ? '…' : <><span>📍</span> Save Pin</>}
+            </button>
+          </div>
+
         </div>
       </div>
     </div>
